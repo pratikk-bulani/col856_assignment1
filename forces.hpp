@@ -1,86 +1,99 @@
 #include "common.hpp"
 #include <bits/stdc++.h>
 
-vec3 gravity(0., -9.8, 0.);
-void gravitationalForce(int& x_max, int& y_max, double& mass, std::vector<std::vector<vec3>>& cloth_points_forces) {
-    for(int i = 0; i < y_max; i++) {
-        for(int j = 0; j < x_max; j++) {
-            cloth_points_forces[i][j] += gravity * mass;
-            // std::cout << cloth_points_forces[i][j].x() << " " << cloth_points_forces[i][j].y() << " " << cloth_points_forces[i][j].z() << " " << mass << std::endl;
-        }
+using namespace std;
+
+Eigen::Vector3d gravity(0., -9.8, 0.);
+void gravitationalForce(double& mass, Eigen::VectorXd &point_forces) {
+    point_forces.reshaped(3, point_forces.rows() / 3).colwise() += gravity * mass;
+}
+
+void springForce(Eigen::VectorXd &point_coordinates, Eigen::VectorXd &point_forces, vector<spring> &springs) {
+    double distance, theta, phi, force; Eigen::Vector3d delta, force_components;
+    for(spring &s : springs) {
+        delta = point_coordinates(Eigen::seqN(s.eigen_index_2, 3)) - point_coordinates(Eigen::seqN(s.eigen_index_1, 3));
+        distance = delta.norm();
+        phi = atan2(sqrt(delta(0)*delta(0) + delta(1)*delta(1)), delta(2));
+        theta = atan2(delta(1), delta(0));
+        force = s.k * (distance - s.rest_length);
+
+        force_components = force * Eigen::Vector3d(sin(phi) * cos(theta), sin(phi) * sin(theta), cos(phi));
+        point_forces(Eigen::seqN(s.eigen_index_1, 3)) += force_components;
+        point_forces(Eigen::seqN(s.eigen_index_2, 3)) += -force_components;
     }
 }
 
-double spring_constant_x = 100., spring_constant_y = 100., spring_constant_d = 50., spring_constant_x_two_hops = 1., spring_constant_y_two_hops = 1.,
-        spring_rest_length_x = 0., spring_rest_length_y = 0., spring_rest_length_d = 0., spring_rest_length_x_two_hops = 0., spring_rest_length_y_two_hops = 0.;
-inline std::vector<double> calcThetaPhiDistance(vec3& point1, vec3& point2) {
-    double delta_x = point2.x() - point1.x(), delta_y = point2.y() - point1.y(), delta_z = point2.z() - point1.z();
-    std::vector<double> result;
-    result.push_back(atan2(delta_y, delta_x));
-    result.push_back(atan2(sqrt(delta_x*delta_x + delta_y*delta_y), delta_z));
-    result.push_back(sqrt(delta_x*delta_x + delta_y*delta_y + delta_z*delta_z));
-    return result;
-}
-inline vec3 calcSpringForce(vec3& point1, vec3& point2, double& spring_rest_length, double& spring_constant) {
-    std::vector<double> theta_phi_distance = calcThetaPhiDistance(point1, point2);
-    double spring_force = spring_constant * (theta_phi_distance[2] - spring_rest_length);
-    return vec3(spring_force * sin(theta_phi_distance[1]) * cos(theta_phi_distance[0]), 
-                spring_force * sin(theta_phi_distance[1]) * sin(theta_phi_distance[0]), 
-                spring_force * cos(theta_phi_distance[1])
-               );
-}
-inline void updateSpringForce(int i1, int j1, int i2, int j2, double& spring_rest_length, double& spring_constant, std::vector<std::vector<vec3>>& cloth_points_forces, std::vector<std::vector<vec3>>& cloth_points_coordinates) {
-    vec3 spring_force = calcSpringForce(cloth_points_coordinates[i1][j1], cloth_points_coordinates[i2][j2], spring_rest_length, spring_constant);
-    cloth_points_forces[i1][j1] += spring_force;
-    cloth_points_forces[i2][j2] += -spring_force;
-}
-void springForce(int& x_max, int& y_max, std::vector<std::vector<vec3>>& cloth_points_forces, std::vector<std::vector<vec3>>& cloth_points_coordinates) {
-    vec3 spring_force;
-    for(int i = 0; i < y_max - 1; i++) {
-        for(int j = 0; j < x_max - 1; j++) {
-            updateSpringForce(i, j, i+1, j, spring_rest_length_y, spring_constant_y, cloth_points_forces, cloth_points_coordinates);
-            updateSpringForce(i, j, i, j+1, spring_rest_length_x, spring_constant_x, cloth_points_forces, cloth_points_coordinates);
-            updateSpringForce(i, j, i+1, j+1, spring_rest_length_d, spring_constant_d, cloth_points_forces, cloth_points_coordinates);
-        }
-    }
-    for(int i = y_max - 1; i > 0; i--) {
-        for(int j = 0; j < x_max - 1; j++) {
-            updateSpringForce(i, j, i-1, j+1, spring_rest_length_d, spring_constant_d, cloth_points_forces, cloth_points_coordinates);
-        }
-    }
-    for(int i = 0; i < x_max - 1; i++) {
-        updateSpringForce(y_max - 1, i, y_max - 1, i+1, spring_rest_length_x, spring_constant_x, cloth_points_forces, cloth_points_coordinates);
-    }
-    for(int i = 0; i < y_max - 1; i++) {
-        updateSpringForce(i, x_max - 1, i+1, x_max - 1, spring_rest_length_y, spring_constant_y, cloth_points_forces, cloth_points_coordinates);
-    }
-
-    // Two hops away
-    for(int i = 0; i < y_max - 2; i++) {
-        for(int j = 0; j < x_max - 2; j++) {
-            updateSpringForce(i, j, i+2, j, spring_rest_length_y_two_hops, spring_constant_y_two_hops, cloth_points_forces, cloth_points_coordinates);
-            updateSpringForce(i, j, i, j+2, spring_rest_length_x_two_hops, spring_constant_x_two_hops, cloth_points_forces, cloth_points_coordinates);
-        }
-    }
-    for(int i = 0; i < x_max - 2; i++) {
-        updateSpringForce(y_max - 1, i, y_max - 1, i+2, spring_rest_length_x_two_hops, spring_constant_x_two_hops, cloth_points_forces, cloth_points_coordinates);
-        updateSpringForce(y_max - 2, i, y_max - 2, i+2, spring_rest_length_x_two_hops, spring_constant_x_two_hops, cloth_points_forces, cloth_points_coordinates);
-    }
-    for(int i = 0; i < y_max - 2; i++) {
-        updateSpringForce(i, x_max - 1, i+2, x_max - 1, spring_rest_length_y_two_hops, spring_constant_y_two_hops, cloth_points_forces, cloth_points_coordinates);
-        updateSpringForce(i, x_max - 2, i+2, x_max - 2, spring_rest_length_y_two_hops, spring_constant_y_two_hops, cloth_points_forces, cloth_points_coordinates);
-    }
+void calculateForce(double& mass, Eigen::VectorXd &point_forces, Eigen::VectorXd &point_coordinates, vector<spring> &springs) {
+    point_forces.setZero();
+    gravitationalForce(mass, point_forces);
+    springForce(point_coordinates, point_forces, springs);
 }
 
-void calculateForce(int& x_max, int& y_max, double& mass, std::vector<std::vector<vec3>>& cloth_points_forces, std::vector<std::vector<vec3>>& cloth_points_coordinates) {
-    std::fill(cloth_points_forces.begin(), cloth_points_forces.end(), std::vector<vec3>(x_max, vec3(0., 0., 0.)));
-    gravitationalForce(x_max, y_max, mass, cloth_points_forces);
-    springForce(x_max, y_max, cloth_points_forces, cloth_points_coordinates);
-    // Fixed points
-#ifdef HORIZONTAL_CLOTH
-    cloth_points_forces[0][0] = cloth_points_forces[0][x_max - 1] = vec3(0., 0., 0.);
-#endif
-#ifdef VERTICAL_CLOTH
-    cloth_points_forces[y_max - 1][0] = cloth_points_forces[y_max - 1][x_max - 1] = vec3(0., 0., 0.);
-#endif
+void springJacobianWRTx(vector<spring> &springs, Eigen::MatrixXd &J_x, Eigen::VectorXd &point_coordinates) {
+    double dFxdx1, dFxdy1, dFxdz1, dFydx1, dFydy1, dFydz1, dFzdx1, dFzdy1, dFzdz1, tau_square_root, tau; Eigen::Vector3d delta;
+    for(spring &s : springs) {
+        delta = point_coordinates(Eigen::seqN(s.eigen_index_2, 3)) - point_coordinates(Eigen::seqN(s.eigen_index_1, 3));
+        tau_square_root = delta.norm();
+        tau = pow(tau_square_root, 2);
+
+        dFxdx1 = -s.k * (1 - s.rest_length / tau_square_root * (1 - delta(0) * delta(0) / tau));
+        dFxdy1 = -s.k * s.rest_length * delta(0) * delta(1) / (tau * tau_square_root);
+        dFxdz1 = -s.k * s.rest_length * delta(0) * delta(2) / (tau * tau_square_root);
+        dFydx1 = dFxdy1;
+        dFydy1 = -s.k * (1 - s.rest_length / tau_square_root * (1 - delta(1) * delta(1) / tau));
+        dFydz1 = -s.k * s.rest_length * delta(1) * delta(2) / (tau * tau_square_root);
+        dFzdx1 = dFxdz1;
+        dFzdy1 = dFydz1;
+        dFzdz1 = -s.k * (1 - s.rest_length / tau_square_root * (1 - delta(2) * delta(2) / tau));
+
+        // Derivatives of F_12_x
+        J_x(s.eigen_index_1 + 0, s.eigen_index_1 + 0) += dFxdx1;
+        J_x(s.eigen_index_1 + 0, s.eigen_index_2 + 0) += -dFxdx1;
+        J_x(s.eigen_index_1 + 0, s.eigen_index_1 + 1) += dFxdy1;
+        J_x(s.eigen_index_1 + 0, s.eigen_index_2 + 1) += -dFxdy1;
+        J_x(s.eigen_index_1 + 0, s.eigen_index_1 + 2) += dFxdz1;
+        J_x(s.eigen_index_1 + 0, s.eigen_index_2 + 2) += -dFxdz1;
+        // Derivatives of F_21_x
+        J_x(s.eigen_index_2 + 0, s.eigen_index_1 + 0) += -dFxdx1;
+        J_x(s.eigen_index_2 + 0, s.eigen_index_2 + 0) += dFxdx1;
+        J_x(s.eigen_index_2 + 0, s.eigen_index_1 + 1) += -dFxdy1;
+        J_x(s.eigen_index_2 + 0, s.eigen_index_2 + 1) += dFxdy1;
+        J_x(s.eigen_index_2 + 0, s.eigen_index_1 + 2) += -dFxdz1;
+        J_x(s.eigen_index_2 + 0, s.eigen_index_2 + 2) += dFxdz1;
+
+        // Derivatives of F_12_y
+        J_x(s.eigen_index_1 + 1, s.eigen_index_1 + 0) += dFydx1;
+        J_x(s.eigen_index_1 + 1, s.eigen_index_2 + 0) += -dFydx1;
+        J_x(s.eigen_index_1 + 1, s.eigen_index_1 + 1) += dFydy1;
+        J_x(s.eigen_index_1 + 1, s.eigen_index_2 + 1) += -dFydy1;
+        J_x(s.eigen_index_1 + 1, s.eigen_index_1 + 2) += dFydz1;
+        J_x(s.eigen_index_1 + 1, s.eigen_index_2 + 2) += -dFydz1;
+        // Derivatives of F_21_y
+        J_x(s.eigen_index_2 + 1, s.eigen_index_1 + 0) += -dFydx1;
+        J_x(s.eigen_index_2 + 1, s.eigen_index_2 + 0) += dFydx1;
+        J_x(s.eigen_index_2 + 1, s.eigen_index_1 + 1) += -dFydy1;
+        J_x(s.eigen_index_2 + 1, s.eigen_index_2 + 1) += dFydy1;
+        J_x(s.eigen_index_2 + 1, s.eigen_index_1 + 2) += -dFydz1;
+        J_x(s.eigen_index_2 + 1, s.eigen_index_2 + 2) += dFydz1;
+
+        // Derivatives of F_12_z
+        J_x(s.eigen_index_1 + 2, s.eigen_index_1 + 0) += dFzdx1;
+        J_x(s.eigen_index_1 + 2, s.eigen_index_2 + 0) += -dFzdx1;
+        J_x(s.eigen_index_1 + 2, s.eigen_index_1 + 1) += dFzdy1;
+        J_x(s.eigen_index_1 + 2, s.eigen_index_2 + 1) += -dFzdy1;
+        J_x(s.eigen_index_1 + 2, s.eigen_index_1 + 2) += dFzdz1;
+        J_x(s.eigen_index_1 + 2, s.eigen_index_2 + 2) += -dFzdz1;
+        // Derivatives of F_21_z
+        J_x(s.eigen_index_2 + 2, s.eigen_index_1 + 0) += -dFzdx1;
+        J_x(s.eigen_index_2 + 2, s.eigen_index_2 + 0) += dFzdx1;
+        J_x(s.eigen_index_2 + 2, s.eigen_index_1 + 1) += -dFzdy1;
+        J_x(s.eigen_index_2 + 2, s.eigen_index_2 + 1) += dFzdy1;
+        J_x(s.eigen_index_2 + 2, s.eigen_index_1 + 2) += -dFzdz1;
+        J_x(s.eigen_index_2 + 2, s.eigen_index_2 + 2) += dFzdz1;
+    }
+}
+
+void calculateJacobian(vector<spring> &springs, Eigen::MatrixXd &J_x, Eigen::VectorXd &point_coordinates) {
+    J_x.setZero();
+    springJacobianWRTx(springs, J_x, point_coordinates);
 }

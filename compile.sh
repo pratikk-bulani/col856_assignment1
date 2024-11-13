@@ -1,1 +1,1 @@
-g++ main.cpp -O3 -I/usr/include/eigen3/ -lGLU -lGL -lglfw -D SYMPLECTIC_EULER -D HORIZONTAL_CLOTH -o main
+g++ main.cpp -O3 -I/usr/include/eigen3/ -lGLU -lGL -lglfw -D BACKWARD_EULER_NEWTON -D HORIZONTAL_CLOTH -o main

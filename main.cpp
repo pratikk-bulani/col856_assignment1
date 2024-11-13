@@ -1,9 +1,8 @@
 #include "camera.hpp"
-#include "draw.hpp"
+#include "geometry.hpp"
 #include "gui.hpp"
 #include "lighting.hpp"
 #include "text.hpp"
-#include "forces.hpp"
 #include "integrators.hpp"
 
 #include <cmath>
@@ -15,15 +14,16 @@ Camera camera;
 Lighting lighting;
 Text text;
 
+#ifdef SYMPLECTIC_EULER
 float dt = 1/600.;
+#endif
+#ifdef BACKWARD_EULER_NEWTON
+float dt = 1/60.;
+#endif
 float t = 0;
 bool paused = false;
 // vec3 p0, p1;
-int x_max = 11, y_max = 11;
-vector<vector<vec3>> cloth_points_coordinates(y_max, vector<vec3>(x_max, vec3(0., 0., 0.)));
-vector<vector<vec3>> cloth_points_velocities(y_max, vector<vec3>(x_max, vec3(0., 0., 0.)));
-vector<vector<vec3>> cloth_points_forces(y_max, vector<vec3>(x_max, vec3(0., 0., 0.)));
-double mass = 0.0;
+PointGeometry pg(11, 11);
 
 void drawStuff() {
     setColor(vec3(0.8,0.2,0.2));
@@ -36,45 +36,7 @@ void drawStuff() {
     setColor(vec3(0.2,0.2,0.2));
     // drawPoint(p0);
     // drawPoint(p1);
-    for(int i = 0; i < y_max; i++) {
-        for(int j = 0; j < x_max; j++) {
-            drawPoint(cloth_points_coordinates[i][j]);
-        }
-    }
-    for(int i = 0; i < y_max - 1; i++) {
-        for(int j = 0; j < x_max - 1; j++) {
-            drawLine(cloth_points_coordinates[i][j], cloth_points_coordinates[i+1][j]);
-            drawLine(cloth_points_coordinates[i][j], cloth_points_coordinates[i][j+1]);
-            drawLine(cloth_points_coordinates[i][j], cloth_points_coordinates[i+1][j+1]);
-        }
-    }
-    for(int i = y_max - 1; i > 0; i--) {
-        for(int j = 0; j < x_max - 1; j++) {
-            drawLine(cloth_points_coordinates[i][j], cloth_points_coordinates[i-1][j+1]);
-        }
-    }
-    for(int i = 0; i < x_max - 1; i++) {
-        drawLine(cloth_points_coordinates[y_max - 1][i], cloth_points_coordinates[y_max - 1][i+1]);
-    }
-    for(int i = 0; i < y_max - 1; i++) {
-        drawLine(cloth_points_coordinates[i][x_max - 1], cloth_points_coordinates[i+1][x_max - 1]);
-    }
-
-    // // Two hops away
-    // for(int i = 0; i < y_max - 2; i++) {
-    //     for(int j = 0; j < x_max - 2; j++) {
-    //         drawLine(cloth_points_coordinates[i][j], cloth_points_coordinates[i+2][j]);
-    //         drawLine(cloth_points_coordinates[i][j], cloth_points_coordinates[i][j+2]);
-    //     }
-    // }
-    // for(int i = 0; i < x_max - 2; i++) {
-    //     drawLine(cloth_points_coordinates[y_max - 1][i], cloth_points_coordinates[y_max - 1][i+2]);
-    //     drawLine(cloth_points_coordinates[y_max - 2][i], cloth_points_coordinates[y_max - 2][i+2]);
-    // }
-    // for(int i = 0; i < y_max - 2; i++) {
-    //     drawLine(cloth_points_coordinates[i][x_max - 1], cloth_points_coordinates[i+2][x_max - 1]);
-    //     drawLine(cloth_points_coordinates[i][x_max - 2], cloth_points_coordinates[i+2][x_max - 2]);
-    // }
+    pg.draw();
 }
 
 void drawWorld() {
@@ -94,8 +56,8 @@ void update(float dt) {
     t += dt;
     // p0 = vec3(sin(M_PI*t), 1, cos(M_PI*t));
     // p1 = vec3(-sin(M_PI*t), 1, -cos(M_PI*t));
-    calculateForce(x_max, y_max, mass, cloth_points_forces, cloth_points_coordinates);
-    calcNextState(x_max, y_max, mass, dt, cloth_points_coordinates, cloth_points_velocities, cloth_points_forces);
+    calculateForce(pg.mass, pg.point_forces, pg.point_coordinates, pg.springs);
+    calcNextState(dt, pg);
 }
 
 void keyPressed(int key) {
@@ -105,38 +67,6 @@ void keyPressed(int key) {
 }
 
 int main(int argc, char **argv) {
-#ifdef HORIZONTAL_CLOTH
-    for(int i = 0; i < y_max; i++) {
-        for(int j = 0; j < x_max; j++) {
-            cloth_points_coordinates[i][j][0] = ((double) j) / x_max;
-            cloth_points_coordinates[i][j][1] = 1.0;
-            cloth_points_coordinates[i][j][2] = ((double) i) / y_max;
-        }
-    }
-#endif
-#ifdef VERTICAL_CLOTH
-    for(int i = 0; i < y_max; i++) {
-        for(int j = 0; j < x_max; j++) {
-            cloth_points_coordinates[i][j][0] = ((double) j) / x_max;
-            cloth_points_coordinates[i][j][1] = ((double) i) / y_max;
-        }
-    }
-#endif
-    mass = 1.0 / (x_max * y_max);
-    auto distance = [](int i1, int j1, int i2, int j2) {
-            return sqrt(
-                pow(cloth_points_coordinates[i1][j1].x() - cloth_points_coordinates[i2][j2].x(), 2.) + 
-                pow(cloth_points_coordinates[i1][j1].y() - cloth_points_coordinates[i2][j2].y(), 2.) +
-                pow(cloth_points_coordinates[i1][j1].z() - cloth_points_coordinates[i2][j2].z(), 2.)
-            );
-    };
-    spring_rest_length_x = distance(0, 1, 0, 0);
-    spring_rest_length_y = distance(1, 0, 0, 0);
-    spring_rest_length_d = distance(1, 1, 0, 0);
-    spring_rest_length_x_two_hops = distance(0, 2, 0, 0);
-    spring_rest_length_y_two_hops = distance(2, 0, 0, 0);
-    // cout << "spring_rest_length: " << spring_rest_length_x << " " << spring_rest_length_y << " " << spring_rest_length_d << " " << spring_rest_length_x_two_hops << " " << spring_rest_length_y_two_hops << std::endl;
-
     window.create("Animation", 1024, 768);
     window.onKeyPress(keyPressed);
     camera.lookAt(vec3(1,1.5,5), vec3(0,0.5,0));
