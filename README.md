@@ -7,7 +7,7 @@ Assignment question link: https://www.cse.iitd.ac.in/~narain/courses/1801-col865
 bash compile.sh
 ```
 Please change between *HORIZONTAL_CLOTH* and *VERTICAL_CLOTH* in the compilation step.
-Also change between the various integrators supported in the *integrators.hpp* file.
+Also change between the various integrators supported in the *integrators.hpp* file. As of now, two integrators supported are: *SYMPLECTIC_EULER* and *BACKWARD_EULER_NEWTON*
 
 ## Run
 ```
